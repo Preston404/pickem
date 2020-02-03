@@ -2,27 +2,10 @@ from urllib.request import urlopen
 from bs4 import BeautifulSoup
 import numpy as np
 
-COLS = []
-for x in range(1,23):
-    COLS.append(x)
-
 TEAMS = ["ari", "atl", "bal", "buf", "car", "chi", "cin", "cle",
          "dal", "den", "det", "gb", "hou", "ind", "jax", "kc",
          "lac", "lar", "mia", "min", "ne", "no", "nyg", "nyj",
          "oak", "phi", "pit", "sf", "sea", "tb", "ten", "wsh"]
-
-class league():
-    teams = []
-    def __init__(self, team):
-        self.teams.append(team)
-
-class team():
-    games = []
-    team_name = ""
-    def __init__(self, team_name, game):
-        self.games.append(game)
-        self.team_name = team_name
-    
 
 class game():
     
@@ -56,44 +39,17 @@ class game():
             "win" : win
         }
 
-def full_prediction(week, team):
-    if(week == 1):
-        return [-1, -1, -1]
-    week = week - 1
-    stats = []
-    with open("team_stats/{0}.txt".format(team), "r") as f:
-        clean_lines = (line.replace('[', ' ').replace(']', ' ') for line in f)
-        t1_games = np.genfromtxt(clean_lines, delimiter=',').tolist()
-    if t1_games[week][1] == -1:
-        return [-1,-1, -1]
-    
-    opponent = t1_games[week][11]
-    with open("team_stats/{0}.txt".format(int(opponent)), "r") as f:
-        clean_lines = (line.replace('[', ' ').replace(']', ' ') for line in f)
-        t2_games = np.genfromtxt(clean_lines, delimiter=',').tolist()
-    
-    # Determine if the team won
-    win = t1_games[week][10]
 
-    for x in range(len(t1_games) - 1):
-        if t1_games[x][0] == -1:
-            del t1_games[x]
-        if t2_games[x][0] == -1:
-            del t2_games[x]
+def get_team_season(team):
+    history_and_result = []
+    for week in range(5,17):
+        history = get_history(week, team)
+        result = get_game_stats(week, team).stats["win"]
+        print(' ')
+        print(get_team_extension(get_game_stats(week, team).stats["opponent"]))
+        print(result)
+        history_and_result.append([history, result])
         
-
-    
-    past_games1 = t1_games[:week]
-    past_games2 = t2_games[:week]
-    
-    
-    pg1_stats = np.mean(np.array(past_games1), axis = 0).tolist()
-    pg2_stats = np.mean(np.array(past_games2), axis = 0).tolist()
-    for x in [0,10]:
-        del pg1_stats[x]
-        del pg2_stats[x]
-        
-    return [[win], pg1_stats + pg2_stats, opponent]
 
 def get_games_average(games):
     new_game = games[0]
@@ -104,14 +60,14 @@ def get_games_average(games):
             if str(key) not in "team opponent win_pct win":
                 new_game.stats[key] = (new_game.stats[key] + game.stats[key]) / 2.0
     new_game.stats["win_pct"] = (wins / len(games))
-    print(new_game.stats)
+    return new_game
     
 
-def get_history_stats(week, team):
+def get_history(week, team):
     games = []
-    for w in range(1, week+1):
+    for w in range(1, week):
         games.append(get_game_stats(w, team))
-    return games
+    return get_games_average(games)
     
     
 def get_game_stats(week, team):
@@ -121,13 +77,14 @@ def get_game_stats(week, team):
     team_url = get_team_url(extension)
     url = get_game_url(team_url, week)
     
-    # Check for valid URL
-    if(url == -1):
-        return [-1, -1]
-    
     # Get Web page
-    html = urlopen(url)
-    soup = BeautifulSoup(html, features="html.parser")
+    while(True):
+        try:
+            html = urlopen(url)
+            soup = BeautifulSoup(html, features="html.parser")
+            break
+        except:
+            pass
     
     def get_final_score():
         scores = []
@@ -155,7 +112,7 @@ def get_game_stats(week, team):
     team_o = 0 if (team == get_team_num(away_team)) else 1
     
     scores = get_final_score()
-    tmp_game = game(team=team, opponent=get_team_num(away_team), points=float(scores[team_i]), points_o=float(scores[team_o]))
+    tmp_game = game(team=team, opponent=opponent, points=float(scores[team_i]), points_o=float(scores[team_o]))
     
     rushingYards = get_stats_by_attr("rushingYards")
     tmp_game.stats["rushingYards"] = float(rushingYards[team_i])
@@ -196,12 +153,17 @@ def get_team_url(team_extension):
     url = "https://www.espn.com/nfl/team/schedule/_/name/" + team_extension
     return url
 
-def get_team_extensions():
-    return TEAMS
             
 def get_game_url(team_url, week):
-    html = urlopen(team_url)
-    soup = BeautifulSoup(html, features="html.parser")
+    
+    while(True):
+        try:
+            html = urlopen(team_url)
+            soup = BeautifulSoup(html, features="html.parser")
+            break
+        except:
+            pass
+        
     game_urls = []
     for link in soup.find_all('a'):
         if("gameId" in str(link)):
@@ -219,15 +181,4 @@ def get_team_num(extension):
 
 def get_team_extension(num):
     return TEAMS[num]
-
-def check_negative(string):
-    if("(" in string or ")" in string):
-        string = string.replace("(","")
-        string = string.replace(")","")
-        return "-" + string
-    else:
-        return string
-    
-    
-            
             
